@@ -28,6 +28,82 @@ interface NbaSchedulePayload {
   };
 }
 
+const ESPN_TEAM_CODES: Record<string, TeamCode> = {
+  BRK: "BKN",
+  CHO: "CHA",
+  GS: "GSW",
+  NO: "NOP",
+  NY: "NYK",
+  PHO: "PHX",
+  SA: "SAS",
+  UTAH: "UTA",
+  WSH: "WAS",
+};
+
+interface EspnScoreboardPayload {
+  events?: Array<{
+    id?: string;
+    name?: string;
+    season?: { slug?: string };
+    competitions?: Array<{
+      competitors?: Array<{
+        homeAway?: string;
+        team?: { abbreviation?: string };
+      }>;
+    }>;
+  }>;
+}
+
+function espnTeamCode(abbreviation: string): TeamCode | null {
+  if (isTeamCode(abbreviation)) return abbreviation;
+  return ESPN_TEAM_CODES[abbreviation] ?? null;
+}
+
+export function normalizeEspnSchedule(
+  payload: unknown,
+  slateDate: string,
+): ScheduledGame[] {
+  const data = payload as EspnScoreboardPayload;
+  if (!Array.isArray(data.events)) {
+    throw new Error("The NBA schedule response had an unexpected format.");
+  }
+
+  const games: ScheduledGame[] = [];
+  for (const event of data.events) {
+    const slug = event.season?.slug ?? "";
+    const name = (event.name ?? "").toLowerCase();
+    if (
+      slug === "preseason" ||
+      slug.includes("all-star") ||
+      name.includes("all-star")
+    ) {
+      continue;
+    }
+
+    const competitors = event.competitions?.[0]?.competitors ?? [];
+    const home = espnTeamCode(
+      competitors.find((team) => team.homeAway === "home")?.team
+        ?.abbreviation ?? "",
+    );
+    const away = espnTeamCode(
+      competitors.find((team) => team.homeAway === "away")?.team
+        ?.abbreviation ?? "",
+    );
+    if (!home || !away) continue;
+
+    games.push({
+      id: event.id ?? `${slateDate}-${away}-${home}`,
+      date: slateDate,
+      home,
+      away,
+    });
+  }
+
+  return games.sort(
+    (a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id),
+  );
+}
+
 function toIsoDate(value: string): string | null {
   const match = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (!match) return null;

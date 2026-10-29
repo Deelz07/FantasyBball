@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGameMatrix,
   filterSchedule,
+  normalizeEspnSchedule,
   normalizeSchedule,
   rankTeams,
 } from "./schedule";
@@ -81,5 +82,46 @@ describe("schedule helpers", () => {
     expect(matrix.BOS).toEqual([true, true]);
     expect(matrix.NYK).toEqual([true, false]);
     expect(matrix.ATL).toEqual([false, false]);
+  });
+
+  it("reads an ESPN scoreboard using the slate date and NBA team codes", () => {
+    const games = normalizeEspnSchedule(
+      {
+        events: [
+          {
+            id: "late",
+            name: "Los Angeles Lakers at Golden State Warriors",
+            date: "2026-10-31T02:00Z",
+            season: { slug: "regular-season" },
+            competitions: [
+              {
+                competitors: [
+                  { homeAway: "home", team: { abbreviation: "GS" } },
+                  { homeAway: "away", team: { abbreviation: "LAL" } },
+                ],
+              },
+            ],
+          },
+          {
+            id: "pre",
+            name: "New York Knicks at Washington Wizards",
+            season: { slug: "preseason" },
+            competitions: [
+              {
+                competitors: [
+                  { homeAway: "home", team: { abbreviation: "WSH" } },
+                  { homeAway: "away", team: { abbreviation: "NY" } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      "2026-10-30",
+    );
+
+    expect(games).toEqual([
+      { id: "late", date: "2026-10-30", home: "GSW", away: "LAL" },
+    ]);
   });
 });

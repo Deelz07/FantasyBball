@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
-  filterSchedule,
-  normalizeSchedule,
+  listDates,
+  normalizeEspnSchedule,
   rankTeams,
 } from "@/lib/schedule";
 
-const NBA_SCHEDULE_URL =
-  "https://cdn.nba.com/static/json/staticData/scheduleLeagueV2_1.json";
+const ESPN_SCOREBOARD_URL =
+  "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard";
 
 function isIsoDate(value: string | null): value is string {
   return Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value));
@@ -38,30 +38,30 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const response = await fetch(NBA_SCHEDULE_URL, {
-      headers: {
-        Accept: "application/json, text/plain, */*",
-        Origin: "https://www.nba.com",
-        Referer: "https://www.nba.com/",
-        "User-Agent":
-          "Mozilla/5.0 (compatible; FantasyBasketballWeekOptimizer/1.0)",
-      },
-      next: { revalidate: 21_600 },
-    });
-
-    if (!response.ok) {
-      throw new Error(`NBA schedule returned HTTP ${response.status}`);
-    }
-
-    const allGames = normalizeSchedule(await response.json());
-    const games = filterSchedule(allGames, start, end);
-    const firstDate = allGames.at(0)?.date ?? null;
-    const lastDate = allGames.at(-1)?.date ?? null;
+    const dates = listDates(start, end);
+    const days = await Promise.all(
+      dates.map(async (date) => {
+        const response = await fetch(
+          `${ESPN_SCOREBOARD_URL}?dates=${date.replaceAll("-", "")}`,
+          {
+            headers: { Accept: "application/json" },
+            next: { revalidate: 21_600 },
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`ESPN schedule returned HTTP ${response.status}`);
+        }
+        return normalizeEspnSchedule(await response.json(), date);
+      }),
+    );
+    const games = days
+      .flat()
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
 
     return NextResponse.json({
       games,
       rankings: rankTeams(games),
-      availableRange: { start: firstDate, end: lastDate },
+      availableRange: { start, end },
     });
   } catch (error) {
     console.error("Unable to load NBA schedule", error);
