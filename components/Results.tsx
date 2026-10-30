@@ -1,10 +1,46 @@
-import type { OptimizationResult } from "@/lib/optimizer";
+import {
+  groupTrades,
+  type ScheduleChange,
+  type TradeOption,
+  type OptimizationResult,
+} from "@/lib/optimizer";
 import type { TeamSchedule } from "@/lib/schedule";
 import { TEAM_NAMES } from "@/lib/teams";
 
 interface ResultsProps {
   result: OptimizationResult;
   rankings: TeamSchedule[];
+}
+
+function dropLabel(effectiveAfter: string | null, weekStart: string | undefined) {
+  if (effectiveAfter) return `Drop after ${formatDate(effectiveAfter)}`;
+  if (weekStart) return `Drop before ${formatDate(weekStart)}`;
+  return "Drop before the week starts";
+}
+
+function listDates(dates: string[]) {
+  const labels = dates.map((date) => formatDate(date, false));
+  if (labels.length <= 1) return labels[0] ?? "";
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
+}
+
+function changeLabel(changes: ScheduleChange[]) {
+  const losses = changes
+    .filter((change) => change.delta < 0)
+    .map((change) => change.date);
+  const gains = changes
+    .filter((change) => change.delta > 0)
+    .map((change) => change.date);
+  const parts = [
+    losses.length > 0 ? `Lose ${listDates(losses)}` : "",
+    gains.length > 0 ? `Gain ${listDates(gains)}` : "",
+  ].filter(Boolean);
+  return parts.join(". ");
+}
+
+function teamNames(teams: TradeOption[]) {
+  return teams.map((team) => TEAM_NAMES[team.addTeam]).join(", ");
 }
 
 function formatDate(date: string, includeWeekday = true) {
@@ -18,6 +54,12 @@ function formatDate(date: string, includeWeekday = true) {
 
 export function Results({ result, rankings }: ResultsProps) {
   const activeTeams = rankings.filter((team) => team.games > 0);
+  const tradeCount = result.players.reduce(
+    (total, player) => total + player.options.length,
+    0,
+  );
+  const bestEv = result.players[0]?.options[0]?.ev ?? 0;
+  const weekStart = result.dailyCapacity[0]?.date;
 
   return (
     <section className="results" aria-live="polite">
@@ -25,24 +67,21 @@ export function Results({ result, rankings }: ResultsProps) {
         <article className="metric-card">
           <span>Current roster</span>
           <strong>{result.baselineGames}</strong>
-          <small>playable games</small>
+          <small>capped games</small>
         </article>
         <article className="metric-card accent">
-          <span>Optimized roster</span>
-          <strong>{result.optimizedGames}</strong>
-          <small>playable games</small>
+          <span>Best swap</span>
+          <strong>+{bestEv}</strong>
+          <small>extra games</small>
         </article>
         <article className="metric-card">
-          <span>Extra games</span>
-          <strong>+{result.gain}</strong>
-          <small>
-            using {result.acquisitionsUsed} acquisition
-            {result.acquisitionsUsed === 1 ? "" : "s"}
-          </small>
+          <span>Plus-EV swaps</span>
+          <strong>{tradeCount}</strong>
+          <small>{tradeCount === 1 ? "option" : "options"}</small>
         </article>
       </div>
 
-      {result.dailyCapacity && result.dailyCapacity.length > 0 && (
+      {result.dailyCapacity.length > 0 && (
         <article className="card capacity-card">
           <div>
             <p className="eyebrow">Daily lineup capacity</p>
@@ -55,17 +94,15 @@ export function Results({ result, rankings }: ResultsProps) {
                 <div className="capacity-track" aria-hidden="true">
                   <span
                     style={{
-                      width: `${(day.optimizedFilled / day.totalSlots) * 100}%`,
+                      width: `${(day.filled / day.totalSlots) * 100}%`,
                     }}
                   />
                 </div>
                 <strong>
-                  {day.optimizedFilled}/{day.totalSlots}
+                  {day.filled}/{day.totalSlots}
                 </strong>
                 <small>
-                  {day.totalSlots - day.optimizedFilled === 0
-                    ? "Full"
-                    : `${day.totalSlots - day.optimizedFilled} open`}
+                  {day.full ? "Full" : `${day.totalSlots - day.filled} open`}
                 </small>
               </div>
             ))}
@@ -75,41 +112,46 @@ export function Results({ result, rankings }: ResultsProps) {
 
       <div className="results-grid">
         <article className="card plan-card">
-          <p className="eyebrow">Recommended plan</p>
-          <h2>Your streaming moves</h2>
-          {result.actions.length === 0 ? (
+          <p className="eyebrow">Plus-EV trades</p>
+          <h2>Swaps that add games</h2>
+          {result.players.length === 0 ? (
             <div className="empty-plan">
-              <strong>No move improves your game total.</strong>
+              <strong>No swap adds games.</strong>
               <p>
                 Keep the current roster for this period, or mark another player
                 as streamable.
               </p>
             </div>
           ) : (
-            <ol className="action-list">
-              {result.actions.map((action, index) => (
-                <li
-                  key={`${action.date}-${action.slotId}-${action.addTeam}-${index}`}
-                >
-                  <time dateTime={action.date}>{formatDate(action.date)}</time>
-                  <div>
-                    <span>Drop {action.drop}</span>
-                    <strong>
-                      Add a player from{" "}
-                      {(action.addTeams ?? [action.addTeam]).join("/")}
-                      {action.addPosition
-                        ? ` eligible at ${action.addPosition}`
-                        : ""}
-                    </strong>
-                  </div>
-                </li>
-              ))}
-            </ol>
+            result.players.map((player) => (
+              <section className="player-group" key={player.playerId}>
+                <h3>
+                  {player.playerName}
+                  <span>{player.team}</span>
+                </h3>
+                <ul className="action-list">
+                  {groupTrades(player.options).map((group) => (
+                    <li
+                      key={`${player.playerId}-${group.effectiveAfter ?? "before"}-${group.ev}-${group.changes.map((change) => `${change.delta}${change.date}`).join()}`}
+                    >
+                      <strong className="ev-value">+{group.ev}</strong>
+                      <div>
+                        <span>{dropLabel(group.effectiveAfter, weekStart)}</span>
+                        <span>{changeLabel(group.changes)}</span>
+                        <strong>Add a player from {teamNames(group.teams)}</strong>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
           )}
           <p className="assumption-note">
-            Confirm a player is available and eligible before making each move.
-            Adds are only suggested when they fill an active ESPN lineup spot
-            that day. This plan optimizes playable games, not player quality.
+            Each line lists teams that add and drop the same dates. A swap
+            that gains a different set of days stays on its own line, even
+            when the total is the same. Days that already have 10 active
+            players do not gain another player. Confirm a player is available
+            before making a move. This list does not rank player quality.
           </p>
         </article>
 

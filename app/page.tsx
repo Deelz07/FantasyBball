@@ -23,7 +23,6 @@ const STORAGE_KEY = "fantasy-bball-week-optimizer";
 interface SavedForm {
   start: string;
   end: string;
-  acquisitions: number;
   roster: RosterPlayer[];
 }
 
@@ -70,7 +69,6 @@ function normalizeRoster(roster: RosterPlayer[]): RosterPlayer[] {
 export default function Home() {
   const [start, setStart] = useState(initialDates.start);
   const [end, setEnd] = useState(initialDates.end);
-  const [acquisitions, setAcquisitions] = useState(4);
   const [roster, setRoster] = useState<RosterPlayer[]>(initialRoster);
   const [result, setResult] = useState<OptimizationResult | null>(null);
   const [rankings, setRankings] = useState<TeamSchedule[]>([]);
@@ -86,7 +84,6 @@ export default function Home() {
       if (
         parsed.start &&
         parsed.end &&
-        Number.isInteger(parsed.acquisitions) &&
         Array.isArray(parsed.roster) &&
         parsed.roster.length > 0
       ) {
@@ -100,7 +97,6 @@ export default function Home() {
     const timeout = window.setTimeout(() => {
       setStart(savedForm.start);
       setEnd(savedForm.end);
-      setAcquisitions(savedForm.acquisitions);
       setRoster(normalizeRoster(savedForm.roster));
     }, 0);
     return () => window.clearTimeout(timeout);
@@ -121,20 +117,8 @@ export default function Home() {
       setError("Choose a matchweek of 14 days or fewer.");
       return;
     }
-    if (
-      !Number.isInteger(acquisitions) ||
-      acquisitions < 0 ||
-      acquisitions > 10
-    ) {
-      setError("Weekly acquisitions must be between 0 and 10.");
-      return;
-    }
     if (normalizedRoster.some((player) => !player.name.trim())) {
       setError("Add a name for every player on your roster.");
-      return;
-    }
-    if (normalizedRoster.some((player) => player.positions.length === 0)) {
-      setError("Select at least one ESPN position for every player.");
       return;
     }
 
@@ -155,12 +139,7 @@ export default function Home() {
       }
 
       const matrix = buildGameMatrix(data.games, dates);
-      const nextResult = optimizeRoster(
-        normalizedRoster,
-        dates,
-        matrix,
-        acquisitions,
-      );
+      const nextResult = optimizeRoster(normalizedRoster, dates, matrix);
       setRankings(data.rankings);
       setResult(nextResult);
       setRoster(normalizedRoster);
@@ -169,7 +148,6 @@ export default function Home() {
         JSON.stringify({
           start,
           end,
-          acquisitions,
           roster: normalizedRoster,
         } satisfies SavedForm),
       );
@@ -194,8 +172,8 @@ export default function Home() {
           <p className="eyebrow">Fantasy basketball decision helper</p>
           <h1>Win the week with your schedule.</h1>
           <p className="hero-copy">
-            Find the busiest NBA teams and turn your weekly acquisitions into
-            the most possible games.
+            Find the busiest NBA teams and the one-for-one swaps that add
+            games.
           </p>
         </div>
       </header>
@@ -226,19 +204,6 @@ export default function Home() {
                 required
                 value={end}
                 onChange={(event) => setEnd(event.target.value)}
-              />
-            </label>
-            <label className="field acquisition-field">
-              <span>Weekly acquisitions</span>
-              <input
-                type="number"
-                min="0"
-                max="10"
-                required
-                value={acquisitions}
-                onChange={(event) =>
-                  setAcquisitions(Number(event.target.value))
-                }
               />
             </label>
           </div>
