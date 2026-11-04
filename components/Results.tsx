@@ -1,11 +1,16 @@
+"use client";
+
+import { useMemo, useState } from "react";
+
 import {
   groupTrades,
+  type PlayerTrades,
   type ScheduleChange,
   type TradeOption,
   type OptimizationResult,
 } from "@/lib/optimizer";
 import type { TeamSchedule } from "@/lib/schedule";
-import { TEAM_NAMES } from "@/lib/teams";
+import { TEAM_CODES, TEAM_NAMES, type TeamCode } from "@/lib/teams";
 
 interface ResultsProps {
   result: OptimizationResult;
@@ -43,6 +48,32 @@ function teamNames(teams: TradeOption[]) {
   return teams.map((team) => TEAM_NAMES[team.addTeam]).join(", ");
 }
 
+function addTeamsInResults(players: PlayerTrades[]) {
+  const present = new Set<TeamCode>();
+  for (const player of players) {
+    for (const option of player.options) present.add(option.addTeam);
+  }
+  return TEAM_CODES.filter((code) => present.has(code));
+}
+
+function playersForTeams(players: PlayerTrades[], selected: TeamCode[]) {
+  if (selected.length === 0) return players;
+  const selectedTeams = new Set(selected);
+  return players
+    .map((player) => ({
+      ...player,
+      options: player.options.filter((option) =>
+        selectedTeams.has(option.addTeam),
+      ),
+    }))
+    .filter((player) => player.options.length > 0)
+    .sort((a, b) => {
+      const evDifference = b.options[0].ev - a.options[0].ev;
+      if (evDifference !== 0) return evDifference;
+      return a.playerName.localeCompare(b.playerName);
+    });
+}
+
 function formatDate(date: string, includeWeekday = true) {
   return new Intl.DateTimeFormat("en-US", {
     weekday: includeWeekday ? "short" : undefined,
@@ -53,13 +84,34 @@ function formatDate(date: string, includeWeekday = true) {
 }
 
 export function Results({ result, rankings }: ResultsProps) {
+  const [filter, setFilter] = useState<{
+    result: OptimizationResult;
+    teams: TeamCode[];
+  } | null>(null);
+  const selectedTeams = filter?.result === result ? filter.teams : [];
+  const addTeams = useMemo(
+    () => addTeamsInResults(result.players),
+    [result.players],
+  );
+  const visiblePlayers = useMemo(
+    () => playersForTeams(result.players, selectedTeams),
+    [result.players, selectedTeams],
+  );
+  const filtering = selectedTeams.length > 0;
   const activeTeams = rankings.filter((team) => team.games > 0);
-  const tradeCount = result.players.reduce(
+  const tradeCount = visiblePlayers.reduce(
     (total, player) => total + player.options.length,
     0,
   );
-  const bestEv = result.players[0]?.options[0]?.ev ?? 0;
+  const bestEv = visiblePlayers[0]?.options[0]?.ev ?? 0;
   const weekStart = result.dailyCapacity[0]?.date;
+
+  const toggleTeam = (team: TeamCode) => {
+    const teams = selectedTeams.includes(team)
+      ? selectedTeams.filter((code) => code !== team)
+      : [...selectedTeams, team];
+    setFilter({ result, teams });
+  };
 
   return (
     <section className="results" aria-live="polite">
@@ -71,13 +123,21 @@ export function Results({ result, rankings }: ResultsProps) {
         </article>
         <article className="metric-card accent">
           <span>Best swap</span>
-          <strong>+{bestEv}</strong>
-          <small>extra games</small>
+          <strong>{visiblePlayers.length === 0 ? "—" : `+${bestEv}`}</strong>
+          <small>{filtering ? "for selected teams" : "extra games"}</small>
         </article>
         <article className="metric-card">
           <span>Plus-EV swaps</span>
           <strong>{tradeCount}</strong>
-          <small>{tradeCount === 1 ? "option" : "options"}</small>
+          <small>
+            {filtering
+              ? tradeCount === 1
+                ? "matching option"
+                : "matching options"
+              : tradeCount === 1
+                ? "option"
+                : "options"}
+          </small>
         </article>
       </div>
 
@@ -114,6 +174,44 @@ export function Results({ result, rankings }: ResultsProps) {
         <article className="card plan-card">
           <p className="eyebrow">Plus-EV trades</p>
           <h2>Swaps that add games</h2>
+          {addTeams.length > 0 && (
+            <div className="team-filter">
+              <div className="team-filter-heading">
+                <p>Show adds from</p>
+                {filtering && (
+                  <button
+                    className="filter-clear"
+                    type="button"
+                    onClick={() => setFilter({ result, teams: [] })}
+                  >
+                    Show all teams
+                  </button>
+                )}
+              </div>
+              <div
+                className="team-filter-actions"
+                role="group"
+                aria-label="Filter recommendations by the team you would add"
+              >
+                {addTeams.map((team) => {
+                  const pressed = selectedTeams.includes(team);
+                  return (
+                    <button
+                      key={team}
+                      className="team-chip"
+                      type="button"
+                      aria-pressed={pressed}
+                      aria-label={`${pressed ? "Hide" : "Show"} ${TEAM_NAMES[team]}`}
+                      title={TEAM_NAMES[team]}
+                      onClick={() => toggleTeam(team)}
+                    >
+                      {team}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {result.players.length === 0 ? (
             <div className="empty-plan">
               <strong>No swap adds games.</strong>
@@ -122,8 +220,15 @@ export function Results({ result, rankings }: ResultsProps) {
                 as streamable.
               </p>
             </div>
+          ) : visiblePlayers.length === 0 ? (
+            <div className="empty-plan">
+              <strong>No swaps for those teams.</strong>
+              <p>
+                Pick another team above, or show every add recommendation.
+              </p>
+            </div>
           ) : (
-            result.players.map((player) => (
+            visiblePlayers.map((player) => (
               <section className="player-group" key={player.playerId}>
                 <h3>
                   {player.playerName}

@@ -576,6 +576,67 @@ textarea:focus {
   padding: 28px 30px;
 }
 
+.team-filter {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.team-filter-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.team-filter-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.filter-clear {
+  padding: 0;
+  border: 0;
+  color: var(--green);
+  background: transparent;
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.team-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.team-chip {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  color: var(--ink);
+  background: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.team-chip[aria-pressed="true"] {
+  border-color: var(--green);
+  color: var(--green);
+  background: #e8efdc;
+}
+
+.team-chip:hover {
+  border-color: var(--green);
+}
+
 .action-list {
   display: grid;
   gap: 0;
