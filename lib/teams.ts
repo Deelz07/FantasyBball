@@ -44,3 +44,22 @@ const TEAM_CODE_SET = new Set<string>(TEAM_CODES);
 export function isTeamCode(value: string): value is TeamCode {
   return TEAM_CODE_SET.has(value);
 }
+
+const ESPN_ABBREVIATIONS: Record<string, TeamCode> = {
+  BRK: "BKN",
+  CHO: "CHA",
+  GS: "GSW",
+  NO: "NOP",
+  NY: "NYK",
+  PHL: "PHI",
+  PHO: "PHX",
+  SA: "SAS",
+  UTAH: "UTA",
+  WSH: "WAS",
+};
+
+export function normalizeEspnAbbreviation(value: string): TeamCode | null {
+  const code = value.trim().toUpperCase();
+  if (isTeamCode(code)) return code;
+  return ESPN_ABBREVIATIONS[code] ?? null;
+}

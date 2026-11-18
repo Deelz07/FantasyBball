@@ -1,4 +1,9 @@
-import { NBA_TEAMS, type TeamCode, isTeamCode } from "./teams";
+import {
+  NBA_TEAMS,
+  type TeamCode,
+  isTeamCode,
+  normalizeEspnAbbreviation,
+} from "./teams";
 
 export interface ScheduledGame {
   id: string;
@@ -28,18 +33,6 @@ interface NbaSchedulePayload {
   };
 }
 
-const ESPN_TEAM_CODES: Record<string, TeamCode> = {
-  BRK: "BKN",
-  CHO: "CHA",
-  GS: "GSW",
-  NO: "NOP",
-  NY: "NYK",
-  PHO: "PHX",
-  SA: "SAS",
-  UTAH: "UTA",
-  WSH: "WAS",
-};
-
 interface EspnScoreboardPayload {
   events?: Array<{
     id?: string;
@@ -55,8 +48,7 @@ interface EspnScoreboardPayload {
 }
 
 function espnTeamCode(abbreviation: string): TeamCode | null {
-  if (isTeamCode(abbreviation)) return abbreviation;
-  return ESPN_TEAM_CODES[abbreviation] ?? null;
+  return normalizeEspnAbbreviation(abbreviation);
 }
 
 export function normalizeEspnSchedule(
@@ -201,4 +193,24 @@ export function buildGameMatrix(
       dates.map((date) => gameSet.has(`${date}:${code}`)),
     ]),
   ) as Record<TeamCode, boolean[]>;
+}
+
+export function buildOpponents(
+  games: ScheduledGame[],
+  dates: string[],
+): Record<TeamCode, (TeamCode | null)[]> {
+  const byDate = new Map<string, Map<TeamCode, TeamCode>>();
+  for (const game of games) {
+    const day = byDate.get(game.date) ?? new Map<TeamCode, TeamCode>();
+    day.set(game.home, game.away);
+    day.set(game.away, game.home);
+    byDate.set(game.date, day);
+  }
+
+  return Object.fromEntries(
+    NBA_TEAMS.map(({ code }) => [
+      code,
+      dates.map((date) => byDate.get(date)?.get(code) ?? null),
+    ]),
+  ) as Record<TeamCode, (TeamCode | null)[]>;
 }

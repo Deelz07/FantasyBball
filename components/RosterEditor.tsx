@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import type { FantasyTeam } from "@/lib/espn-fantasy";
 import { NBA_TEAMS, type TeamCode } from "@/lib/teams";
 import {
   PLAYER_POSITIONS,
@@ -12,6 +13,10 @@ import {
 interface RosterEditorProps {
   roster: RosterPlayer[];
   onChange: (roster: RosterPlayer[]) => void;
+  teams: FantasyTeam[];
+  selectedTeamId: string | null;
+  onSelectTeam: (teamId: string) => void;
+  loadingTeams: boolean;
 }
 
 interface ImportResponse {
@@ -23,7 +28,14 @@ interface ImportResponse {
   error?: string;
 }
 
-export function RosterEditor({ roster, onChange }: RosterEditorProps) {
+export function RosterEditor({
+  roster,
+  onChange,
+  teams,
+  selectedTeamId,
+  onSelectTeam,
+  loadingTeams,
+}: RosterEditorProps) {
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
@@ -45,6 +57,8 @@ export function RosterEditor({ roster, onChange }: RosterEditorProps) {
         name: "",
         team: "ATL",
         streamable: false,
+        available: true,
+        avgPoints: null,
         positions: ["PG"],
       },
     ]);
@@ -93,6 +107,8 @@ export function RosterEditor({ roster, onChange }: RosterEditorProps) {
           ...player,
           id: `imported-${crypto.randomUUID()}`,
           streamable: false,
+          available: true,
+          avgPoints: null,
         }));
 
       onChange([...existing, ...imported]);
@@ -115,12 +131,48 @@ export function RosterEditor({ roster, onChange }: RosterEditorProps) {
     <section className="card roster-card" aria-labelledby="roster-heading">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Your roster</p>
-          <h2 id="roster-heading">Who can be streamed?</h2>
+          <p className="eyebrow">League teams</p>
+          <h2 id="roster-heading">Choose a roster</h2>
         </div>
         <button className="secondary-button" type="button" onClick={addPlayer}>
           + Add player
         </button>
+      </div>
+
+      <div className="team-picker">
+        {loadingTeams ? (
+          <p className="roster-source">Loading league teams…</p>
+        ) : teams.length === 0 ? (
+          <p className="roster-source">
+            League teams could not be loaded. You can still add players below.
+          </p>
+        ) : (
+          <div
+            className="team-picker-list"
+            role="listbox"
+            aria-label="Fantasy teams in your league"
+          >
+            {teams.map((team) => {
+              const selected = team.id === selectedTeamId;
+              return (
+                <button
+                  key={team.id}
+                  className="league-team"
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => onSelectTeam(team.id)}
+                >
+                  <strong>{team.name}</strong>
+                  <span>
+                    {team.yours ? "Your team · " : ""}
+                    {team.roster.length} players
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="roster-import">
@@ -160,6 +212,14 @@ export function RosterEditor({ roster, onChange }: RosterEditorProps) {
         )}
       </div>
 
+      {roster.length === 0 ? (
+        <p className="roster-source">
+          {selectedTeamId
+            ? "That team has no players to stream."
+            : "Select a team to generate its roster."}
+        </p>
+      ) : null}
+
       <div className="roster-list">
         {roster.map((player, index) => (
           <div className="roster-row" key={player.id}>
@@ -172,6 +232,12 @@ export function RosterEditor({ roster, onChange }: RosterEditorProps) {
                   update(player.id, { name: event.target.value })
                 }
               />
+              <small className="player-average">
+                {player.avgPoints == null
+                  ? "Average loads from ESPN"
+                  : `${player.avgPoints.toFixed(1)} fantasy pts/game`}
+                {player.available === false ? " · Out" : ""}
+              </small>
             </label>
             <label className="field team-field">
               <span>NBA team</span>

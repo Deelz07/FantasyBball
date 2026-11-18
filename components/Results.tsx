@@ -23,29 +23,25 @@ function dropLabel(effectiveAfter: string | null, weekStart: string | undefined)
   return "Drop before the week starts";
 }
 
-function listDates(dates: string[]) {
-  const labels = dates.map((date) => formatDate(date, false));
-  if (labels.length <= 1) return labels[0] ?? "";
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(", ")}, and ${labels[labels.length - 1]}`;
-}
-
 function changeLabel(changes: ScheduleChange[]) {
-  const losses = changes
-    .filter((change) => change.delta < 0)
-    .map((change) => change.date);
-  const gains = changes
-    .filter((change) => change.delta > 0)
-    .map((change) => change.date);
-  const parts = [
-    losses.length > 0 ? `Lose ${listDates(losses)}` : "",
-    gains.length > 0 ? `Gain ${listDates(gains)}` : "",
-  ].filter(Boolean);
-  return parts.join(". ");
+  return changes
+    .map((change) => {
+      const sign = change.delta > 0 ? "+" : "";
+      return `${formatDate(change.date, false)} ${sign}${change.delta.toFixed(1)}`;
+    })
+    .join(" · ");
 }
 
-function teamNames(teams: TradeOption[]) {
-  return teams.map((team) => TEAM_NAMES[team.addTeam]).join(", ");
+function addLabel(teams: TradeOption[]) {
+  return teams
+    .map((team) => {
+      const opponents =
+        team.opponents.length > 0
+          ? ` vs ${team.opponents.join(", ")}`
+          : "";
+      return `${team.addName} (${team.addTeam}, ${team.addAvg.toFixed(1)} avg, ${team.games} game${team.games === 1 ? "" : "s"}${opponents})`;
+    })
+    .join(" or ");
 }
 
 function addTeamsInResults(players: PlayerTrades[]) {
@@ -118,13 +114,15 @@ export function Results({ result, rankings }: ResultsProps) {
       <div className="summary-grid">
         <article className="metric-card">
           <span>Current roster</span>
-          <strong>{result.baselineGames}</strong>
-          <small>capped games</small>
+          <strong>{result.baselinePoints.toFixed(1)}</strong>
+          <small>expected points</small>
         </article>
         <article className="metric-card accent">
-          <span>Best swap</span>
-          <strong>{visiblePlayers.length === 0 ? "—" : `+${bestEv}`}</strong>
-          <small>{filtering ? "for selected teams" : "extra games"}</small>
+          <span>Best add</span>
+          <strong>
+            {visiblePlayers.length === 0 ? "—" : `+${bestEv.toFixed(1)}`}
+          </strong>
+          <small>{filtering ? "for selected teams" : "expected points"}</small>
         </article>
         <article className="metric-card">
           <span>Plus-EV swaps</span>
@@ -172,8 +170,8 @@ export function Results({ result, rankings }: ResultsProps) {
 
       <div className="results-grid">
         <article className="card plan-card">
-          <p className="eyebrow">Plus-EV trades</p>
-          <h2>Swaps that add games</h2>
+          <p className="eyebrow">Streaming adds</p>
+          <h2>Free agents worth more points</h2>
           {addTeams.length > 0 && (
             <div className="team-filter">
               <div className="team-filter-heading">
@@ -214,7 +212,7 @@ export function Results({ result, rankings }: ResultsProps) {
           )}
           {result.players.length === 0 ? (
             <div className="empty-plan">
-              <strong>No swap adds games.</strong>
+              <strong>No add is worth more points.</strong>
               <p>
                 Keep the current roster for this period, or mark another player
                 as streamable.
@@ -222,7 +220,7 @@ export function Results({ result, rankings }: ResultsProps) {
             </div>
           ) : visiblePlayers.length === 0 ? (
             <div className="empty-plan">
-              <strong>No swaps for those teams.</strong>
+              <strong>No adds from those teams.</strong>
               <p>
                 Pick another team above, or show every add recommendation.
               </p>
@@ -232,18 +230,20 @@ export function Results({ result, rankings }: ResultsProps) {
               <section className="player-group" key={player.playerId}>
                 <h3>
                   {player.playerName}
-                  <span>{player.team}</span>
+                  <span>
+                    {player.team} · {player.avgPoints.toFixed(1)} avg
+                  </span>
                 </h3>
                 <ul className="action-list">
                   {groupTrades(player.options).map((group) => (
                     <li
                       key={`${player.playerId}-${group.effectiveAfter ?? "before"}-${group.ev}-${group.changes.map((change) => `${change.delta}${change.date}`).join()}`}
                     >
-                      <strong className="ev-value">+{group.ev}</strong>
+                      <strong className="ev-value">+{group.ev.toFixed(1)}</strong>
                       <div>
                         <span>{dropLabel(group.effectiveAfter, weekStart)}</span>
                         <span>{changeLabel(group.changes)}</span>
-                        <strong>Add a player from {teamNames(group.teams)}</strong>
+                        <strong>Add {addLabel(group.teams)}</strong>
                       </div>
                     </li>
                   ))}
@@ -252,11 +252,12 @@ export function Results({ result, rankings }: ResultsProps) {
             ))
           )}
           <p className="assumption-note">
-            Each line lists teams that add and drop the same dates. A swap
-            that gains a different set of days stays on its own line, even
-            when the total is the same. Days that already have 10 active
-            players do not gain another player. Confirm a player is available
-            before making a move. This list does not rank player quality.
+            Each line is the best day to drop that player for the free agent
+            shown. A game is worth the player&apos;s season fantasy average
+            times how many points that opponent allows compared with the league,
+            capped at a 15% swing. Only the 10 highest scores count each day, so
+            a game behind ten better players adds nothing. Adds with the same
+            point changes share a line.
           </p>
         </article>
 

@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Week Optimizer | Fantasy Basketball",
   description:
-    "Find one-for-one fantasy basketball swaps that add scheduled games.",
+    "Rank fantasy basketball streams by games, scoring average, and opponent.",
 };
 
 export default function RootLayout({
